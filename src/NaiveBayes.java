@@ -2,7 +2,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
-import java.util.ArrayList;
 import java.util.Scanner;
 
 public class NaiveBayes
@@ -18,12 +17,8 @@ public class NaiveBayes
 
   private void parse(){
     File csv = new File("data/training.csv");
-    ArrayList<TrainingInput>[] allInputsOfClass = new ArrayList[20];
+    int[] numInputsOfClass = new int[20];
     int[][] instancesOfWordsPerClass = new int[20][UNIQUE_WORDS];
-
-    for(int i =0; i < 20; i++){
-      allInputsOfClass[i] = new ArrayList<>();
-    }
 
     try
     {
@@ -34,28 +29,23 @@ public class NaiveBayes
         String s = sc.next();
         ls = s.split(",");
         int[] counts = new int[UNIQUE_WORDS];
-        int sum = 0;
+
         int clas = Integer.parseInt(ls[COLS-1]) - 1;
 
         for(int i = 1; i < COLS-1; i++){
           int elem =  Integer.parseInt(ls[i]);
           if(elem > 0) instancesOfWordsPerClass[clas][i-1]++;
           counts[i-1] = elem;
-          sum += elem;
         }
-
-        TrainingInput input = new TrainingInput(Integer.parseInt(ls[0]), counts, sum, clas);
-        allInputsOfClass[clas].add(input);
-        System.out.println(input);
+        numInputsOfClass[clas]++;
       }
 
       int[] uniqueWordsPerClass = getUniqueWordsInClass(instancesOfWordsPerClass);
 
-      double[] prior = getPriors(allInputsOfClass); //gets the prior estimates
+      double[] logPriors = getPriors(numInputsOfClass); //gets the prior estimates
 
       double[][] likelihoods = getLikelihoods(uniqueWordsPerClass, instancesOfWordsPerClass);
-        //likelihood array of a word being in a particular class
-
+      //likelihood array of words being in a particular class
 
       Scanner sc2 = new Scanner(new File("data/testing.csv"));
       PrintWriter writer = new PrintWriter("out.csv", "UTF-8");
@@ -72,22 +62,11 @@ public class NaiveBayes
         }
 
         //now use the input data to estimate the class
-        double[] classLogSums = getLikelihoodRowLogSums(likelihoods, input);
+        double[] classProbs = getLikelihoodRowLogSums(logPriors, likelihoods, input);
 
-        double[] classProbs = getProbsOfClasses(prior, classLogSums);
-
-        double max = Double.NEGATIVE_INFINITY;
-        int clas = -1;
-        for(int i = 0; i < 20; i++){
-          //System.out.println("Prob: " + classProbs[i]);
-          if(classProbs[i] > max){
-
-            max = classProbs[i];
-            clas = i + 1;
-          }
-        }
+        int bestClass = getBestClass(classProbs);
         //System.out.println("ID: " + ls2[0] + "Class: " + clas);
-        writer.println(ls2[0] + "," + clas);
+        writer.println(ls2[0] + "," + bestClass);
       }
       writer.close();
 
@@ -101,17 +80,30 @@ public class NaiveBayes
     }
   }
 
-  private int[] getUniqueWordsInClass(int[][] classContainsWord){
+  /**
+   * Gets the number of unique words found in each newsgroup
+   * @param wordInstancesPerClass 
+   * @return
+   */
+  private int[] getUniqueWordsInClass(int[][] wordInstancesPerClass){
     int[] returnArr = new int[20];
 
     for(int news = 0; news < 20; news++){
       for(int word = 0; word < UNIQUE_WORDS; word++){
-        if(classContainsWord[news][word] > 0) returnArr[news]++;
+        if(wordInstancesPerClass[news][word] > 0) returnArr[news]++;
       }
     }
     return returnArr;
   }
 
+  /**
+   * Looks at the unique words per newsgroup, and the TOTAL word occurrences per newsgroup, and calculates the
+   * conditional probabilities of a given word belonging to a specific newsgroup (calculates P(news | word) for all
+   * newsgroups and words)
+   * @param uniqueWordsPerClass simple counter of how many unique words are found in each newsgroup
+   * @param wordOccurrencesInClass how many occurrences of every word are found per newsgroup
+   * @return
+   */
   private double[][] getLikelihoods(int[] uniqueWordsPerClass, int[][] wordOccurrencesInClass){
     double[][] array = new double[20][UNIQUE_WORDS];
 
@@ -125,57 +117,38 @@ public class NaiveBayes
     return array;
   }
 
-  private double[] getProbsOfClasses(double[] priors, double[] logLikely){
-    double[] ret = new double[20];
-    for(int i = 0; i < 20; i++){
-      //System.out.println("prior: " + priors[i]);
-      ret[i] += Math.log(priors[i]) + logLikely[i];
-      //System.out.println("ret: " + ret[i]);
-    }
-    return ret;
-  }
-
-  private double[] getLikelihoodRowLogSums(double[][] likelihoods, int[] inputWords){
+  private double[] getLikelihoodRowLogSums(double[] logPriors, double[][] likelihoods, int[] inputWords){
     double[] returnArr = new double[20];
-    for(int news = 0; news < 20; news++)
-    {
-      for (int i = 0; i < UNIQUE_WORDS; i++)
-      {
-        if(inputWords[i] > 0) returnArr[news] += likelihoods[news][i];
+    for(int news = 0; news < 20; news++) {
+      returnArr[news] += logPriors[news]; // P(newsgroup)
+      for (int i = 0; i < UNIQUE_WORDS; i++) {
+        if(inputWords[i] > 0) {
+          returnArr[news] += (likelihoods[news][i] * inputWords[i]); //adds all P(x_i | newsgroup) (addition b/c Log)
+        }
       }
     }
     return returnArr;
   }
 
-  private double[] getPriors(ArrayList[] counts){
+  private double[] getPriors(int[] counts){
     double[] priors = new double[20];
     for(int i = 0; i < 20; i++){
-      priors[i] = (double)counts[i].size() / (double)ROWS;
+      priors[i] = Math.log(counts[i]) - Math.log(ROWS);
       //System.out.println("I: " + i + ": " + priors[i]);
     }
     return priors;
   }
 
-  class TrainingInput {
-    private int id;
-    private int[] counts;
-    private int sum;
-    private int clas;
-
-    TrainingInput(int id, int[] counts, int sum, int clas)
-    {
-      this.id = id;
-      this.counts = counts;
-      this.sum = sum;
-      this.clas = clas;
+  private int getBestClass(double[] classProbs){
+    double max = Double.NEGATIVE_INFINITY;
+    int clas = -1;
+    for(int i = 0; i < 20; i++){
+      //System.out.println("Prob: " + classProbs[i]);
+      if(classProbs[i] > max){
+        max = classProbs[i];
+        clas = i + 1;
+      }
     }
-    int getSum(){
-      return sum;
-    }
-
-    @Override
-    public String toString(){
-      return "Id : " + id + " has " + sum + " words in class " + clas;
-    }
+    return clas;
   }
 }
