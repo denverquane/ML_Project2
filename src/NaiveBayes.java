@@ -1,5 +1,7 @@
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Scanner;
 
@@ -27,9 +29,10 @@ public class NaiveBayes
     {
       Scanner sc = new Scanner(csv);
 
+      String[] ls;
       while(sc.hasNext()){
         String s = sc.next();
-        String[] ls = s.split(",");
+        ls = s.split(",");
         int[] counts = new int[UNIQUE_WORDS];
         int sum = 0;
         int clas = Integer.parseInt(ls[COLS-1]) - 1;
@@ -45,6 +48,7 @@ public class NaiveBayes
         allInputsOfClass[clas].add(input);
         System.out.println(input);
       }
+
       int[] uniqueWordsPerClass = getUniqueWordsInClass(instancesOfWordsPerClass);
 
       double[] prior = getPriors(allInputsOfClass); //gets the prior estimates
@@ -53,13 +57,45 @@ public class NaiveBayes
         //likelihood array of a word being in a particular class
 
 
+      Scanner sc2 = new Scanner(new File("data/testing.csv"));
+      PrintWriter writer = new PrintWriter("out.csv", "UTF-8");
+      writer.println("id,class");
 
-      //now use the input data to estimate the class
-//      double[] classLogSums = getLikelihoodRowLogSums();
-//
-//      double[] classProbs = getProbsOfClasses(prior, classLogSums);
+      while(sc2.hasNext()){
+        String s2 = sc2.next();
+        String ls2[] = s2.split(",");
+        int[] input = new int[UNIQUE_WORDS];
+
+        for(int i = 1; i < COLS-1; i++){
+          int elem =  Integer.parseInt(ls2[i]);
+          input[i-1] = elem;
+        }
+
+        //now use the input data to estimate the class
+        double[] classLogSums = getLikelihoodRowLogSums(likelihoods, input);
+
+        double[] classProbs = getProbsOfClasses(prior, classLogSums);
+
+        double max = Double.NEGATIVE_INFINITY;
+        int clas = -1;
+        for(int i = 0; i < 20; i++){
+          //System.out.println("Prob: " + classProbs[i]);
+          if(classProbs[i] > max){
+
+            max = classProbs[i];
+            clas = i + 1;
+          }
+        }
+        //System.out.println("ID: " + ls2[0] + "Class: " + clas);
+        writer.println(ls2[0] + "," + clas);
+      }
+      writer.close();
+
 
     } catch (FileNotFoundException e)
+    {
+      e.printStackTrace();
+    } catch (UnsupportedEncodingException e)
     {
       e.printStackTrace();
     }
@@ -82,7 +118,7 @@ public class NaiveBayes
     for(int newsGroup = 0; newsGroup < 20; newsGroup++){
       int uniqueWords = uniqueWordsPerClass[newsGroup];
       for(int word = 0; word < UNIQUE_WORDS; word++){
-        double likelihood = (double)wordOccurrencesInClass[newsGroup][word] / (double)(uniqueWords + UNIQUE_WORDS);
+        double likelihood = (double)(wordOccurrencesInClass[newsGroup][word] + 1) / (double)(uniqueWords + UNIQUE_WORDS);
         array[newsGroup][word] = Math.log(likelihood);
       }
     }
@@ -90,19 +126,22 @@ public class NaiveBayes
   }
 
   private double[] getProbsOfClasses(double[] priors, double[] logLikely){
+    double[] ret = new double[20];
     for(int i = 0; i < 20; i++){
-      logLikely[i] += Math.log(priors[i]);
+      //System.out.println("prior: " + priors[i]);
+      ret[i] += Math.log(priors[i]) + logLikely[i];
+      //System.out.println("ret: " + ret[i]);
     }
-    return logLikely;
+    return ret;
   }
 
-  private double[] getLikelihoodRowLogSums(double[][] likelihoods){
+  private double[] getLikelihoodRowLogSums(double[][] likelihoods, int[] inputWords){
     double[] returnArr = new double[20];
     for(int news = 0; news < 20; news++)
     {
       for (int i = 0; i < UNIQUE_WORDS; i++)
       {
-        returnArr[news] += likelihoods[news][i];
+        if(inputWords[i] > 0) returnArr[news] += likelihoods[news][i];
       }
     }
     return returnArr;
@@ -112,7 +151,7 @@ public class NaiveBayes
     double[] priors = new double[20];
     for(int i = 0; i < 20; i++){
       priors[i] = (double)counts[i].size() / (double)ROWS;
-      System.out.println("I: " + i + ": " + priors[i]);
+      //System.out.println("I: " + i + ": " + priors[i]);
     }
     return priors;
   }
