@@ -12,10 +12,10 @@ public class NaiveBayes
 
   public static void main(String[] args){
     NaiveBayes csv = new NaiveBayes();
-    csv.parse();
+    csv.trainAndClassify();
   }
 
-  private void parse(){
+  private void trainAndClassify(){
     File csv = new File("data/training.csv");
     int[] numInputsOfClass = new int[20];
     int[][] instancesOfWordsPerClass = new int[20][UNIQUE_WORDS];
@@ -24,57 +24,30 @@ public class NaiveBayes
     {
       Scanner sc = new Scanner(csv);
 
-      String[] ls;
       while(sc.hasNext()){
         String s = sc.next();
-        ls = s.split(",");
-        int[] counts = new int[UNIQUE_WORDS];
+        String[] ls = s.split(",");
 
         int clas = Integer.parseInt(ls[COLS-1]) - 1;
 
         for(int i = 1; i < COLS-1; i++){
           int elem =  Integer.parseInt(ls[i]);
           if(elem > 0) instancesOfWordsPerClass[clas][i-1]++;
-          counts[i-1] = elem;
         }
         numInputsOfClass[clas]++;
       }
 
       int[] uniqueWordsPerClass = getUniqueWordsInClass(instancesOfWordsPerClass);
 
-      double[] logPriors = getPriors(numInputsOfClass); //gets the prior estimates
+      double[] logPriors = getPriors(numInputsOfClass);
+      //gets the prior estimates
 
       double[][] likelihoods = getLikelihoods(uniqueWordsPerClass, instancesOfWordsPerClass);
       //likelihood array of words being in a particular class
 
-      Scanner sc2 = new Scanner(new File("data/testing.csv"));
-      PrintWriter writer = new PrintWriter("out.csv", "UTF-8");
-      writer.println("id,class");
+      classifyTestData(logPriors, likelihoods);
 
-      while(sc2.hasNext()){
-        String s2 = sc2.next();
-        String ls2[] = s2.split(",");
-        int[] input = new int[UNIQUE_WORDS];
-
-        for(int i = 1; i < COLS-1; i++){
-          int elem =  Integer.parseInt(ls2[i]);
-          input[i-1] = elem;
-        }
-
-        //now use the input data to estimate the class
-        double[] classProbs = getLikelihoodRowLogSums(logPriors, likelihoods, input);
-
-        int bestClass = getBestClass(classProbs);
-        //System.out.println("ID: " + ls2[0] + "Class: " + clas);
-        writer.println(ls2[0] + "," + bestClass);
-      }
-      writer.close();
-
-
-    } catch (FileNotFoundException e)
-    {
-      e.printStackTrace();
-    } catch (UnsupportedEncodingException e)
+    } catch (FileNotFoundException | UnsupportedEncodingException e)
     {
       e.printStackTrace();
     }
@@ -130,6 +103,12 @@ public class NaiveBayes
     return returnArr;
   }
 
+  /**
+   * Prior knowledge looks at all the data, and gets the probability of a document being in a class just on random chance
+   * (in essence: # of documents in class X / # of documents total)
+   * @param counts
+   * @return
+   */
   private double[] getPriors(int[] counts){
     double[] priors = new double[20];
     for(int i = 0; i < 20; i++){
@@ -139,6 +118,38 @@ public class NaiveBayes
     return priors;
   }
 
+
+  private void classifyTestData(double[] logPriors, double[][] likelihoods) throws FileNotFoundException, UnsupportedEncodingException
+  {
+    Scanner sc2 = new Scanner(new File("data/testing.csv"));
+    PrintWriter writer = new PrintWriter("out.csv", "UTF-8");
+    writer.println("id,class");
+
+    while(sc2.hasNext()){
+      String s2 = sc2.next();
+      String ls2[] = s2.split(",");
+      int[] input = new int[UNIQUE_WORDS];
+
+      for(int i = 1; i < COLS-1; i++){
+        int elem =  Integer.parseInt(ls2[i]);
+        input[i-1] = elem;
+      }
+
+      //now use the input data to estimate the class
+      double[] classProbs = getLikelihoodRowLogSums(logPriors, likelihoods, input);
+
+      int bestClass = getBestClass(classProbs);
+      //System.out.println("ID: " + ls2[0] + "Class: " + clas);
+      writer.println(ls2[0] + "," + bestClass);
+    }
+    writer.close();
+  }
+
+  /**
+   * Just look through the class probabilities and pick the maximum
+   * @param classProbs
+   * @return
+   */
   private int getBestClass(double[] classProbs){
     double max = Double.NEGATIVE_INFINITY;
     int clas = -1;
