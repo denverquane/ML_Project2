@@ -9,6 +9,7 @@ public class NaiveBayes
   public static final int COLS = 61190;
   public static final int UNIQUE_WORDS = COLS-2;
   public static final int ROWS = 12000;
+  public static final double BETA = (double)(1.0 / UNIQUE_WORDS);
 
   public static void main(String[] args){
     NaiveBayes csv = new NaiveBayes();
@@ -83,7 +84,7 @@ public class NaiveBayes
     for(int newsGroup = 0; newsGroup < 20; newsGroup++){
       int uniqueWords = uniqueWordsPerClass[newsGroup];
       for(int word = 0; word < UNIQUE_WORDS; word++){
-        double likelihood = (double)(wordOccurrencesInClass[newsGroup][word] + 1) / (double)(uniqueWords + UNIQUE_WORDS);
+        double likelihood = (double)(wordOccurrencesInClass[newsGroup][word] + BETA) / (double)(uniqueWords + (UNIQUE_WORDS * BETA));
         array[newsGroup][word] = Math.log(likelihood);
       }
     }
@@ -93,7 +94,7 @@ public class NaiveBayes
   private double[] getLikelihoodRowLogSums(double[] logPriors, double[][] likelihoods, int[] inputWords){
     double[] returnArr = new double[20];
     for(int news = 0; news < 20; news++) {
-      returnArr[news] += logPriors[news]; // P(newsgroup)
+      returnArr[news] += logPriors[news]; // P(newsgroup) (This is the MLE)
       for (int i = 0; i < UNIQUE_WORDS; i++) {
         if(inputWords[i] > 0) {
           returnArr[news] += (likelihoods[news][i] * inputWords[i]); //adds all P(x_i | newsgroup) (addition b/c Log)
