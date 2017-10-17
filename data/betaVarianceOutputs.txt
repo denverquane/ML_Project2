@@ -1,0 +1,11 @@
+Predicted 11818/12000 Correctly (98.48333333333333%) with Beta = 1.0E-5
+
+Predicted 11787/12000 Correctly (98.225%) with Beta = 1.0E-4
+
+Predicted 11717/12000 Correctly (97.64166666666667%) with Beta = 0.001
+
+Predicted 11598/12000 Correctly (96.65%) with Beta = 0.01
+
+Predicted 11280/12000 Correctly (94.0%) with Beta = 0.1
+
+Predicted 10016/12000 Correctly (83.46666666666667%) with Beta = 1.0
