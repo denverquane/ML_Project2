@@ -12,7 +12,7 @@ def classify_data(likeli,priori):
         for row in reader:
             vals = np.zeros(20)
             word = map(float,row)
-            firstElem = word.pop(0)
+            firstElem = int(word.pop(0))
             for k in range(int(19)):
                 like = map(float,likeli[k,:])
                 vals[k] = priori[k] * sum([i*j for i, j in zip(like,word)])
