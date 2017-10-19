@@ -19,7 +19,7 @@ public class NaiveBayes
     NaiveBayes csv = new NaiveBayes();
 
     if(CROSS_VALIDATE){
-      csv.trainAndClassify(100);
+      csv.trainAndClassify(75);
 //      csv.trainAndClassify(25);
 //      csv.trainAndClassify(50);
 //      csv.trainAndClassify(75);
@@ -77,7 +77,7 @@ public class NaiveBayes
 
       double[][] likelihoods = getLikelihoods(uniqueWordsPerClass, instancesOfWordsPerClass);
 
-      getEntropiesOfLikelihoods(likelihoods, logPriors);
+      likelihoods = getEntropiesOfLikelihoods(likelihoods, logPriors);
 
       classifyTestData(logPriors, likelihoods, maxDocuments);
 
@@ -129,7 +129,7 @@ public class NaiveBayes
             ((double) uniqueWords + ((double) UNIQUE_WORDS * (BETA - 1.0)));
         //calculates P( X | Y )
 
-        array[newsGroup][word] = Math.log(likelihood);
+        array[newsGroup][word] = likelihood;
       }
     }
     return array;
@@ -144,9 +144,9 @@ public class NaiveBayes
     public String toString(){ return "Word " + i + " has entropy " + likeli; }
   }
 
-  private static final boolean printWeighted = true;
+  private static final boolean printWeighted = false;
 
-  private void getEntropiesOfLikelihoods(double[][] logLikeliHoods, double[] logPriors){
+  private double[][] getEntropiesOfLikelihoods(double[][] likeliHoods, double[] logPriors){
     TreeSet<IntDoublePair> sortedTree = new TreeSet<>((o1, o2) -> Double.compare(o2.likeli, o1.likeli));
 
     double[][] entropies = new double[20][UNIQUE_WORDS];
@@ -155,15 +155,19 @@ public class NaiveBayes
     for(int word = 0; word < UNIQUE_WORDS; word++){
       double wordEntropy = 0.0;
 
-
-      //Set<Integer> classesFoundIn = new HashSet<>();
-      //int totalInstances = 0;
-
       for(int group = 0; group < 20; group++){
-        entropies[group][word] = -(Math.exp(logLikeliHoods[group][word]) * log2(Math.exp(logLikeliHoods[group][word])));
+        entropies[group][word] = -likeliHoods[group][word] * log2(likeliHoods[group][word]);
 
         wordEntropy += entropies[group][word];
-        //if(wordOccurrencesInClass[group][word] > 0) classesFoundIn.add(group);
+      }
+
+      if(wordEntropy > 0.5){
+        System.out.println("HIGH ENTROPY FOR " + (word+1));
+        for(int group = 0; group < 20; group++){
+          System.out.println("previous: " + likeliHoods[group][word] + " prior: " + Math.exp(logPriors[group]));
+
+          likeliHoods[group][word] += Math.exp(logPriors[group]);
+        }
       }
 
       sortedTree.add(new IntDoublePair(word + 1, 5.0 - wordEntropy));
@@ -178,6 +182,7 @@ public class NaiveBayes
         }
       }
     }
+    return likeliHoods;
   }
 
   private double[] getLikelihoodRowLogSums(double[] logPriors, double[][] likelihoods, int[] inputWords){
@@ -186,7 +191,7 @@ public class NaiveBayes
       returnArr[group] += logPriors[group]; // P(newsgroup) (This is the MLE)
       for (int i = 0; i < UNIQUE_WORDS; i++) {
         if(inputWords[i] > 0) {
-          returnArr[group] += (likelihoods[group][i] * inputWords[i]); //adds all P(x_i | newsgroup) (addition b/c Log)
+          returnArr[group] += (Math.log(likelihoods[group][i]) * inputWords[i]); //adds all P(x_i | newsgroup) (addition b/c Log)
         }
       }
     }
@@ -209,7 +214,6 @@ public class NaiveBayes
   }
 
   /**
-   * TODO classify REMAINING records, not all records
    * @param logPriors
    * @param likelihoods
    * @throws FileNotFoundException
@@ -240,7 +244,7 @@ public class NaiveBayes
     while(sc2.hasNext()){
       String s2 = sc2.next();
       count++;
-      if(count > startingLine || startingLine == 12000)
+      if(count > startingLine || startingLine == 12000 || !CROSS_VALIDATE)
       {
         totalEvaluated++;
         String ls2[] = s2.split(",");
