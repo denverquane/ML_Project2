@@ -2,7 +2,9 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
+import java.util.Comparator;
 import java.util.Scanner;
+import java.util.TreeSet;
 
 public class NaiveBayes
 {
@@ -19,9 +21,9 @@ public class NaiveBayes
     NaiveBayes csv = new NaiveBayes();
 
     if(CROSS_VALIDATE){
-      for(int trainPercent = 10; trainPercent < 101; trainPercent += 10){
-        csv.trainAndClassify(trainPercent);
-      }
+      //for(int trainPercent = 10; trainPercent < 101; trainPercent += 10){
+        csv.trainAndClassify(100);
+      //}
     }
     //if(CROSS_VALIDATE) for(BETA = 0.00001; BETA < 1.1; BETA *= 10.0)
     //csv.trainAndClassify(100);
@@ -35,6 +37,13 @@ public class NaiveBayes
     int totalDocs = 0;
     int[] numInputsOfClass = new int[20];
     int[][] instancesOfWordsPerClass = new int[20][UNIQUE_WORDS];
+    //int[] totalNumberOfWordInstance = new int[UNIQUE_WORDS];
+    //int[] uniqueDocsWordIsFoundIn = new int[UNIQUE_WORDS];
+    /**
+     * THESE INDICES ARE BACKWARDS, DO NOT CONFUSE THIS! Backwards indices should make traversing the complete records
+     * for one single word across all inputs faster (b/c of row incrementing as opposed to column incrementing)
+     */
+    int[][] completeWordFreqRecord = new int[UNIQUE_WORDS][12000];
 
     try
     {
@@ -43,26 +52,52 @@ public class NaiveBayes
       while(sc.hasNext() && totalDocs < maxDocuments){
         String s = sc.next();
         String[] ls = s.split(",");
-        totalDocs++;
 
         int clas = Integer.parseInt(ls[COLS-1]) - 1;
 
         for(int i = 1; i < COLS-1; i++){
           int elem =  Integer.parseInt(ls[i]);
-          if(elem > 0) instancesOfWordsPerClass[clas][i-1]++;
+          if(elem > 0) {
+            instancesOfWordsPerClass[clas][i-1]++;
+            //uniqueDocsWordIsFoundIn[i-1]++;
+          }
+
+          completeWordFreqRecord[i-1][totalDocs] = elem;
+          //totalNumberOfWordInstance[i-1] += elem;
         }
+        totalDocs++;
         numInputsOfClass[clas]++;
       }
+      //int rareCounter = 0;
+
+//      double[] entropies = getEntropiesOfAllWords(completeWordFreqRecord, totalNumberOfWordInstance, maxDocuments);
+//
+//      for(int n =0; n< UNIQUE_WORDS; n++){
+//        if(entropies[n] > 3.0 && uniqueDocsWordIsFoundIn[n] < 10)
+//          System.out.println("Word " + (n+1) + " has entropy " + entropies[n] + " and is found in " + uniqueDocsWordIsFoundIn[n] + " docs");
+//      }
+      //System.out.println("Rare: " + rareCounter);
+
       System.out.println("Trained with a total of " + totalDocs + " documents");
 
       int[] uniqueWordsPerClass = getUniqueWordsInClass(instancesOfWordsPerClass);
 
-      double[] logPriors = getPriors(numInputsOfClass);
+      double[] logPriors = getLogPriors(numInputsOfClass);
       //gets the prior estimates
 
       double[][] likelihoods = getLikelihoods(uniqueWordsPerClass, instancesOfWordsPerClass);
-      //likelihood array of words being in a particular class
 
+
+      //likelihood array of words being in a particular class
+      TreeSet<IntDoublePair> set = getEntropiesOfLikelihoods(likelihoods, instancesOfWordsPerClass, completeWordFreqRecord);
+      int num = 0;
+      for(IntDoublePair s : set){
+        if(num > 100) break;
+        else {
+          System.out.println(s);
+          num++;
+        }
+      }
 
       classifyTestData(logPriors, likelihoods);
 
@@ -88,6 +123,11 @@ public class NaiveBayes
     return returnArr;
   }
 
+  private static double log2(double x)
+  {
+    return Math.log(x) / Math.log(2);
+  }
+
   /**
    * Looks at the unique words per newsgroup, and the TOTAL word occurrences per newsgroup, and calculates the
    * conditional probabilities of a given word belonging to a specific newsgroup (calculates P(news | word) for all
@@ -96,18 +136,60 @@ public class NaiveBayes
    * @param wordOccurrencesInClass how many occurrences of every word are found per newsgroup
    * @return
    */
-  private double[][] getLikelihoods(int[] uniqueWordsPerClass, int[][] wordOccurrencesInClass){
+  private double[][] getLikelihoods(int[] uniqueWordsPerClass, int[][] wordOccurrencesInClass)
+  {
     double[][] array = new double[20][UNIQUE_WORDS];
 
-    for(int newsGroup = 0; newsGroup < 20; newsGroup++){
+    for (int newsGroup = 0; newsGroup < 20; newsGroup++)
+    {
       int uniqueWords = uniqueWordsPerClass[newsGroup];
-      for(int word = 0; word < UNIQUE_WORDS; word++){
-        double likelihood = ((double)wordOccurrencesInClass[newsGroup][word] + (BETA - 1.0)) /
-                            ((double)uniqueWords + ((double)UNIQUE_WORDS * (BETA - 1.0)));
+      for (int word = 0; word < UNIQUE_WORDS; word++)
+      {
+        double likelihood = ((double) wordOccurrencesInClass[newsGroup][word] + (BETA - 1.0)) /
+            ((double) uniqueWords + ((double) UNIQUE_WORDS * (BETA - 1.0)));
+        //calculates P( X | Y )
+
         array[newsGroup][word] = Math.log(likelihood);
       }
     }
     return array;
+  }
+
+  class IntDoublePair {
+    final int i;
+    final double likeli;
+    final int classes;
+    final int totalInstances;
+
+    IntDoublePair(int i, double likeli, int classes, int totalInstances){this.i = i; this.likeli = likeli; this.classes = classes; this.totalInstances = totalInstances;}
+    @Override
+    public String toString(){
+      return "Word " + i + " has likelihood " + likeli + " and found in " + classes + " classes with " + totalInstances + " instances";
+    }
+  }
+
+  private TreeSet<IntDoublePair> getEntropiesOfLikelihoods(double[][] likeliHoods, int[][] wordOccurrencesInClass, int[][] completeRecord){
+    TreeSet<IntDoublePair> sortedTree = new TreeSet<>((o1, o2) -> Double.compare(o2.likeli, o1.likeli));
+
+    for(int word = 0; word < UNIQUE_WORDS; word++){
+      double totalLikelihood = 0.0;
+      int classesFoundIn = 0;
+      int totalInstances = 0;
+
+      for(int group = 0; group < 20; group++){
+        totalLikelihood += likeliHoods[group][word];
+        if(wordOccurrencesInClass[group][word] > 0) classesFoundIn++;
+      }
+      for(int doc = 0; doc < 12000; doc++){
+        totalInstances += completeRecord[word][doc];
+      }
+
+
+      double weightedLikely = -totalLikelihood / ((double)classesFoundIn * (double)totalInstances);
+
+      sortedTree.add(new IntDoublePair(word + 1, weightedLikely, classesFoundIn, totalInstances));
+    }
+    return sortedTree;
   }
 
   private double[] getLikelihoodRowLogSums(double[] logPriors, double[][] likelihoods, int[] inputWords){
@@ -129,7 +211,7 @@ public class NaiveBayes
    * @param counts
    * @return
    */
-  private double[] getPriors(int[] counts){
+  private double[] getLogPriors(int[] counts){
     double[] priors = new double[20];
     for(int i = 0; i < 20; i++){
       priors[i] = Math.log(counts[i]) - Math.log(ROWS);
@@ -138,7 +220,13 @@ public class NaiveBayes
     return priors;
   }
 
-
+  /**
+   * TODO classify REMAINING records, not all records
+   * @param logPriors
+   * @param likelihoods
+   * @throws FileNotFoundException
+   * @throws UnsupportedEncodingException
+   */
   private void classifyTestData(double[] logPriors, double[][] likelihoods)
       throws FileNotFoundException, UnsupportedEncodingException
   {
