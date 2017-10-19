@@ -9,20 +9,30 @@ public class NaiveBayes
   private static final int COLS = 61190;
   private static final int UNIQUE_WORDS = COLS-2;
   private static final int ROWS = 12000;
-  private static final boolean PRINT_MISCLASSIFY = false;
-  private static double BETA = 0.0000001;
-  //private static double BETA = 1.0 / (double)(UNIQUE_WORDS);
+  private static final boolean PRINT_MISCLASSIFY = true;
+  //private static double BETA = 0.0000001;
+  private static double BETA = 1.0 + (1.0 / (double)(UNIQUE_WORDS));
 
   private static final boolean CROSS_VALIDATE = true;
 
   public static void main(String[] args){
     NaiveBayes csv = new NaiveBayes();
-    if(CROSS_VALIDATE) for(BETA = 0.00001; BETA < 1.1; BETA *= 10.0) csv.trainAndClassify();
-    else csv.trainAndClassify();
+
+    if(CROSS_VALIDATE){
+      for(int trainPercent = 10; trainPercent < 101; trainPercent += 10){
+        csv.trainAndClassify(trainPercent);
+      }
+    }
+    //if(CROSS_VALIDATE) for(BETA = 0.00001; BETA < 1.1; BETA *= 10.0)
+    //csv.trainAndClassify(100);
+    //else csv.trainAndClassify();
   }
 
-  private void trainAndClassify(){
+  private void trainAndClassify(int percentToTrain){
     File csv = new File("data/training.csv");
+    double percent = (double)percentToTrain / 100.0;
+    int maxDocuments = (int)(percent * 12000.0);
+    int totalDocs = 0;
     int[] numInputsOfClass = new int[20];
     int[][] instancesOfWordsPerClass = new int[20][UNIQUE_WORDS];
 
@@ -30,9 +40,10 @@ public class NaiveBayes
     {
       Scanner sc = new Scanner(csv);
 
-      while(sc.hasNext()){
+      while(sc.hasNext() && totalDocs < maxDocuments){
         String s = sc.next();
         String[] ls = s.split(",");
+        totalDocs++;
 
         int clas = Integer.parseInt(ls[COLS-1]) - 1;
 
@@ -42,6 +53,7 @@ public class NaiveBayes
         }
         numInputsOfClass[clas]++;
       }
+      System.out.println("Trained with a total of " + totalDocs + " documents");
 
       int[] uniqueWordsPerClass = getUniqueWordsInClass(instancesOfWordsPerClass);
 
@@ -50,6 +62,7 @@ public class NaiveBayes
 
       double[][] likelihoods = getLikelihoods(uniqueWordsPerClass, instancesOfWordsPerClass);
       //likelihood array of words being in a particular class
+
 
       classifyTestData(logPriors, likelihoods);
 
@@ -89,7 +102,8 @@ public class NaiveBayes
     for(int newsGroup = 0; newsGroup < 20; newsGroup++){
       int uniqueWords = uniqueWordsPerClass[newsGroup];
       for(int word = 0; word < UNIQUE_WORDS; word++){
-        double likelihood = ((double)wordOccurrencesInClass[newsGroup][word] + BETA) / ((double)uniqueWords + ((double)UNIQUE_WORDS * BETA));
+        double likelihood = ((double)wordOccurrencesInClass[newsGroup][word] + (BETA - 1.0)) /
+                            ((double)uniqueWords + ((double)UNIQUE_WORDS * (BETA - 1.0)));
         array[newsGroup][word] = Math.log(likelihood);
       }
     }
@@ -125,7 +139,8 @@ public class NaiveBayes
   }
 
 
-  private void classifyTestData(double[] logPriors, double[][] likelihoods) throws FileNotFoundException, UnsupportedEncodingException
+  private void classifyTestData(double[] logPriors, double[][] likelihoods)
+      throws FileNotFoundException, UnsupportedEncodingException
   {
     Scanner sc2;
     PrintWriter writer;
@@ -165,10 +180,13 @@ public class NaiveBayes
       if(!CROSS_VALIDATE)  writer.println(ls2[0] + "," + bestClass);
       else{
         actualClass = Integer.parseInt(ls2[COLS-1]);
-        if(actualClass != bestClass){
-          if(PRINT_MISCLASSIFY) System.out.println("ID: " + ls2[0] + " mismatch -> Predicted " + bestClass + " vs Actual " + actualClass);
-          confusionMatrix[bestClass - 1][actualClass - 1]++;
-        } else totalCorrect++;
+        if(actualClass > 0 && bestClass > 0) confusionMatrix[bestClass - 1][actualClass - 1]++;
+        if(actualClass == bestClass){
+          totalCorrect++;
+        } else {
+          //          if(PRINT_MISCLASSIFY) System.out.println("ID: " + ls2[0] + " mismatch -> Predicted " +
+//              bestClass + " vs Actual " + actualClass);
+        }
       }
     }
     if(!CROSS_VALIDATE) {
@@ -185,13 +203,15 @@ public class NaiveBayes
           for (int j = 0; j < 20; j++)
           {
             int val = confusionMatrix[i][j];
-            if (val < 10) System.out.print(val + "  ");
+            if (val < 10) System.out.print(val + "   ");
+            else if(val < 100) System.out.print(val + "  ");
             else System.out.print(val + " ");
           }
           System.out.println();
         }
       }
-      System.out.println("\nPredicted " + totalCorrect + "/" + totalEvaluated + " Correctly (" + 100.0*((double)totalCorrect/(double)totalEvaluated) + "%) with Beta = " + BETA);
+      System.out.println("\nPredicted " + totalCorrect + "/" + totalEvaluated + " Correctly (" +
+          100.0*((double)totalCorrect/(double)totalEvaluated) + "%) with Beta = " + BETA);
     }
   }
 
