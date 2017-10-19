@@ -9,13 +9,19 @@ import operator
 def classify_data(likeli,priori):
     with open('testing.csv') as f:
         reader = csv.reader(f)
+        likeliArray = np.zeros(shape=(20,61188));
+        for k in range(len(likeliArray)):
+            for m in range(len(likeliArray[0])):
+                likeliArray[k][m] = likeli[k][m] * priori[k];
         for row in reader:
             vals = np.zeros(20)
             word = map(float,row)
             firstElem = int(word.pop(0))
-            for k in range(int(19)):
-                like = map(float,likeli[k,:])
-                vals[k] = priori[k] * sum([i*j for i, j in zip(like,word)])
+            vals = np.dot(likeliArray,word);
+            # for k in range(int(19)):
+#                 like = map(float,likeli[k,:])
+#                 #vals[k] = sum([i+j+priori[k] for i, j in zip(like,word)])
+#                 vals[k] = np.dot(like,word)*priori[k];
             index, value = max(enumerate(vals), key=operator.itemgetter(1))
             print (str(firstElem) + ', ' + str(index+1));
 
@@ -23,12 +29,12 @@ def calc_likeli(uniqWord, classArr, beta):
     likeliArray = np.zeros(shape=(20,61188));
     for i in range(len(classArr)):
         for j in range(len(classArr[0])):
-            likeliArray[i][j] = (classArr[i][j] + beta)/(uniqWord[i] + 61188 * beta);
+            likeliArray[i][j] = (classArr[i][j] + (beta - 1))/(uniqWord[i] + (61188 * beta - 1));
     return likeliArray;
 
 def calc_priori(data, occurArray):
     for i in range(len(occurArray)):
-        occurArray[i] /= 12000.00;
+        occurArray[i] = occurArray[i]/12000.00;
     return occurArray;
 
 def uniqueWords(newsGroups):
@@ -59,5 +65,5 @@ if __name__== "__main__":
     occurArray = calc_priori(data,occurArray);
     del(data);
     uniqArr = uniqueWords(classArray);
-    likeliArr = calc_likeli(uniqArr,classArray,1);
+    likeliArr = calc_likeli(uniqArr,classArray,(1/61188));
     classify_data(likeliArr,occurArray);
