@@ -77,7 +77,7 @@ public class NaiveBayes
 
       double[][] likelihoods = getLikelihoods(uniqueWordsPerClass, instancesOfWordsPerClass);
 
-      likelihoods = getEntropiesOfLikelihoods(likelihoods);
+      getEntropiesOfLikelihoods(likelihoods, logPriors);
 
       classifyTestData(logPriors, likelihoods, maxDocuments);
 
@@ -141,14 +141,12 @@ public class NaiveBayes
 
     IntDoublePair(int i, double likeli){this.i = i; this.likeli = likeli;}
     @Override
-    public String toString(){
-      return "Word " + i + " has entropy " + likeli;
-    }
+    public String toString(){ return "Word " + i + " has entropy " + likeli; }
   }
 
   private static final boolean printWeighted = true;
 
-  private double[][] getEntropiesOfLikelihoods(double[][] likeliHoods){
+  private void getEntropiesOfLikelihoods(double[][] logLikeliHoods, double[] logPriors){
     TreeSet<IntDoublePair> sortedTree = new TreeSet<>((o1, o2) -> Double.compare(o2.likeli, o1.likeli));
 
     double[][] entropies = new double[20][UNIQUE_WORDS];
@@ -162,22 +160,13 @@ public class NaiveBayes
       //int totalInstances = 0;
 
       for(int group = 0; group < 20; group++){
-        entropies[group][word] = -(Math.exp(likeliHoods[group][word]) * log2(Math.exp(likeliHoods[group][word])));
+        entropies[group][word] = -(Math.exp(logLikeliHoods[group][word]) * log2(Math.exp(logLikeliHoods[group][word])));
 
         wordEntropy += entropies[group][word];
         //if(wordOccurrencesInClass[group][word] > 0) classesFoundIn.add(group);
       }
-      System.out.println("Word " + (word+1) + " entropy= " + wordEntropy);
 
-      sortedTree.add(new IntDoublePair(word + 1, wordEntropy));
-//      for(int doc = 0; doc < 12000; doc++){
-//        totalInstances += completeRecord[word][doc];
-//      }
-
-//      if(printWeighted){
-//        double weightedLikely = totalLikelihood / ((double)classesFoundIn.size() * (double)totalInstances);
-//        sortedTree.add(new IntDoublePair(word + 1, -weightedLikely, classesFoundIn.size(), totalInstances));
-//      }
+      sortedTree.add(new IntDoublePair(word + 1, 5.0 - wordEntropy));
     }
     if(printWeighted){
       int count = 100;
@@ -189,7 +178,6 @@ public class NaiveBayes
         }
       }
     }
-    return likeliHoods;
   }
 
   private double[] getLikelihoodRowLogSums(double[] logPriors, double[][] likelihoods, int[] inputWords){
