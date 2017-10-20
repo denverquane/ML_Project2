@@ -157,26 +157,23 @@ public class NaiveBayes
   private double[][] getEntropiesOfLikelihoods(double[][] likeliHoods, double[] logPriors, int[][] allOccurrences){
     TreeSet<IntDoublePair> sortedTree = new TreeSet<>((o1, o2) -> Double.compare(o2.likeli, o1.likeli));
 
-    double[][] entropies = new double[20][UNIQUE_WORDS];
-
     for(int word = 0; word < UNIQUE_WORDS; word++){
       double wordEntropy = 0.0;
 
       for(int group = 0; group < 20; group++){
-        entropies[group][word] = -likeliHoods[group][word] * log2(likeliHoods[group][word]);
-
-        wordEntropy += entropies[group][word];
+        wordEntropy += -likeliHoods[group][word] * log2(likeliHoods[group][word]);
       }
 
-      if(wordEntropy > 0.4){
+
+      if(wordEntropy > 0.5){
         System.out.println("HIGH ENTROPY FOR " + (word+1));
         for(int group = 0; group < 20; group++){
           //System.out.println("previous: " + likeliHoods[group][word] + " prior: " + Math.exp(logPriors[group]));
           likeliHoods[group][word] += Math.exp(logPriors[group]);
         }
       }
-
-      sortedTree.add(new IntDoublePair(word, 5.0 - wordEntropy));
+      if(wordEntropy > (1.0 / 20.0)) //only pick those that are above 1 instance per 20 documents
+      sortedTree.add(new IntDoublePair(word, 5.0 - wordEntropy)); //flip the scale (chose the low entropy words)
     }
     if(printWeighted){
       int count = 0;
@@ -188,7 +185,7 @@ public class NaiveBayes
           for(int n = 0; n < 20; n++){
             sum += allOccurrences[n][s.i];
           }
-          System.out.println(count + ": " + VOCABULARY_ARRAY[s.i] + " with " + sum);
+          System.out.println(count + ": " + VOCABULARY_ARRAY[s.i]);
 
         }
       }
