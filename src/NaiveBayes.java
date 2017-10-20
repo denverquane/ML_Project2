@@ -19,27 +19,38 @@ public class NaiveBayes
   //This is the default value of Beta, which depends on the size of the alphabet
   private static double BETA = 1.0 + (1.0 / (double)(UNIQUE_WORDS));
 
+  private static final String[] VOCABULARY_ARRAY = getVocabArrFromFile("data/vocabulary.txt");
+
+  //private static int[][] globalFreq = new int[20][UNIQUE_WORDS];
+
 
   /**
-   * This determines if the program should be training the
+   * This determines if the program should be training and validating with the same dataset, or if we want to train with
+   * all of the training data, and then test with testing.csv (which will be output to out.csv)
    */
   private static boolean CROSS_VALIDATE = false;
 
   public static void main(String[] args){
-    NaiveBayes csv = new NaiveBayes();
+    NaiveBayes naiveBayes = new NaiveBayes();
     if(args.length > 1 && args[0].equals("-cross")){
       CROSS_VALIDATE = true;
       System.out.println("Cross-validating with " + Integer.parseInt(args[1]));
-      csv.trainAndClassify(Integer.parseInt(args[1]));
+      naiveBayes.trainAndClassify(Integer.parseInt(args[1]));
     }
-    else csv.trainAndClassify(100);
+    else naiveBayes.trainAndClassify(100);
 
   }
 
   private void trainAndClassify(int percentToTrain){
     File csv = new File("data/training.csv");
+
+    //what ratio of the data we should be training with (ex: input 50 => percent = 0.5)
     double percent = (double)percentToTrain / 100.0;
+
+    //total amount of documents we should use for training
     int maxDocuments = (int)(percent * 12000.0);
+
+
     int totalDocs = 0;
     int[] numInputsOfClass = new int[20];
     int[][] instancesOfWordsPerClass = new int[20][UNIQUE_WORDS];
@@ -58,11 +69,7 @@ public class NaiveBayes
           int elem =  Integer.parseInt(ls[i]);
           if(elem > 0) {
             instancesOfWordsPerClass[clas][i-1] += elem;
-            //uniqueDocsWordIsFoundIn[i-1]++;
           }
-
-          //completeWordFreqRecord[i-1][totalDocs] = elem;
-          //totalNumberOfWordInstance[i-1] += elem;
         }
         totalDocs++;
         numInputsOfClass[clas]++;
@@ -78,7 +85,7 @@ public class NaiveBayes
 
       double[][] likelihoods = getLikelihoods(uniqueWordsPerClass, instancesOfWordsPerClass);
 
-      likelihoods = getEntropiesOfLikelihoods(likelihoods, logPriors);
+      likelihoods = getEntropiesOfLikelihoods(likelihoods, logPriors, instancesOfWordsPerClass);
 
       classifyTestData(logPriors, likelihoods, maxDocuments);
 
@@ -145,13 +152,12 @@ public class NaiveBayes
     public String toString(){ return "Word " + i + " has entropy " + likeli; }
   }
 
-  private static final boolean printWeighted = false;
+  private static final boolean printWeighted = true;
 
-  private double[][] getEntropiesOfLikelihoods(double[][] likeliHoods, double[] logPriors){
+  private double[][] getEntropiesOfLikelihoods(double[][] likeliHoods, double[] logPriors, int[][] allOccurrences){
     TreeSet<IntDoublePair> sortedTree = new TreeSet<>((o1, o2) -> Double.compare(o2.likeli, o1.likeli));
 
     double[][] entropies = new double[20][UNIQUE_WORDS];
-
 
     for(int word = 0; word < UNIQUE_WORDS; word++){
       double wordEntropy = 0.0;
@@ -162,24 +168,28 @@ public class NaiveBayes
         wordEntropy += entropies[group][word];
       }
 
-      if(wordEntropy > 0.5){
+      if(wordEntropy > 0.4){
         System.out.println("HIGH ENTROPY FOR " + (word+1));
         for(int group = 0; group < 20; group++){
-          System.out.println("previous: " + likeliHoods[group][word] + " prior: " + Math.exp(logPriors[group]));
-
+          //System.out.println("previous: " + likeliHoods[group][word] + " prior: " + Math.exp(logPriors[group]));
           likeliHoods[group][word] += Math.exp(logPriors[group]);
         }
       }
 
-      sortedTree.add(new IntDoublePair(word + 1, 5.0 - wordEntropy));
+      sortedTree.add(new IntDoublePair(word, 5.0 - wordEntropy));
     }
     if(printWeighted){
-      int count = 100;
+      int count = 0;
       for(IntDoublePair s : sortedTree){
-        if(count == 0) break;
+        if(count == 100) break;
         else {
-          count--;
-          System.out.println(s);
+          count++;
+          int sum = 0;
+          for(int n = 0; n < 20; n++){
+            sum += allOccurrences[n][s.i];
+          }
+          System.out.println(count + ": " + VOCABULARY_ARRAY[s.i] + " with " + sum);
+
         }
       }
     }
@@ -317,6 +327,30 @@ public class NaiveBayes
       System.out.println("\nPredicted " + totalCorrect + "/" + totalEvaluated + " Correctly (" +
           100.0*((double)totalCorrect/(double)totalEvaluated) + "%) with Beta = " + (BETA - 1.0));
     }
+  }
+
+  private static String[] getVocabArrFromFile(String filePath)
+  {
+    String[] vocab = new String[UNIQUE_WORDS];
+
+    Scanner sc = null;
+    try
+    {
+      sc = new Scanner(new File(filePath));
+    } catch (FileNotFoundException e)
+    {
+      e.printStackTrace();
+      return vocab;
+    }
+    int count = 0;
+
+    while(sc.hasNext()){
+      String word = sc.next();
+
+      vocab[count] = word;
+      count++;
+    }
+    return vocab;
   }
 
   /**
