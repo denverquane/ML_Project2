@@ -12,16 +12,17 @@ public class NaiveBayes
   //Total number of unique words in the vocabulary
   private static final int UNIQUE_WORDS = COLS-2;
 
-
+  //total number of training document records
   private static final int ROWS = 12000;
+
+  //Should detailed information about the misclassifications be printed?
   private static final boolean PRINT_MISCLASSIFY = true;
 
   //This is the default value of Beta, which depends on the size of the alphabet
   private static double BETA = 1.0 + (1.0 / (double)(UNIQUE_WORDS));
 
+  //Simple string array of all words found in the dictionary/vocabulary (only really used for question 6)
   private static final String[] VOCABULARY_ARRAY = getVocabArrFromFile("data/vocabulary.txt");
-
-  //private static int[][] globalFreq = new int[20][UNIQUE_WORDS];
 
 
   /**
@@ -30,6 +31,11 @@ public class NaiveBayes
    */
   private static boolean CROSS_VALIDATE = false;
 
+  /**
+   * Main function for the Naive Bayes classifier
+   * @param args Expects no arguments, or two arguments that specify the percentage of documents to use for training
+   *             Ex: "-cross 50" will train with 50% of the training data, and test with the other 50%
+   */
   public static void main(String[] args){
     NaiveBayes naiveBayes = new NaiveBayes();
     if(args.length > 1 && args[0].equals("-cross")){
@@ -41,6 +47,12 @@ public class NaiveBayes
 
   }
 
+  /**
+   * Basic top-level function to open training file, organize data and compute NB estimates, and then classify data
+   * according to the percentage of
+   * @param percentToTrain integer value between 0 and 100 that should be used for determing how many documents to use
+   *                       for training
+   */
   private void trainAndClassify(int percentToTrain){
     File csv = new File("data/training.csv");
 
@@ -50,42 +62,50 @@ public class NaiveBayes
     //total amount of documents we should use for training
     int maxDocuments = (int)(percent * 12000.0);
 
-
+    //lines of the training data read in so far
     int totalDocs = 0;
+
+    //how many inputs of those used for training are belonging to what class (of the 20). The class is the index
     int[] numInputsOfClass = new int[20];
+
+    //Total record of how many times a specific word is found within a specific class (used for MLE)
     int[][] instancesOfWordsPerClass = new int[20][UNIQUE_WORDS];
 
     try
     {
       Scanner sc = new Scanner(csv);
 
+      //keep reading input lines until the file is done, or we have enough to train with
       while(sc.hasNext() && totalDocs < maxDocuments){
         String s = sc.next();
         String[] ls = s.split(",");
 
+        //get the class from the training data
         int clas = Integer.parseInt(ls[COLS-1]) - 1;
 
         for(int i = 1; i < COLS-1; i++){
           int elem =  Integer.parseInt(ls[i]);
           if(elem > 0) {
             instancesOfWordsPerClass[clas][i-1] += elem;
+            //Add to the classes' record for this word, based on how many times it occurs
           }
         }
-        totalDocs++;
-        numInputsOfClass[clas]++;
+        totalDocs++; //finished with an input line
+        numInputsOfClass[clas]++; //this input was part of the "clas" newsgroup, so add 1
       }
-
 
       System.out.println("Trained with a total of " + totalDocs + " documents");
 
-      int[] uniqueWordsPerClass = getTotalWordsInClass(instancesOfWordsPerClass);
+      //get an array of the total number of words found in each class
+      int[] totalWordsPerClass = getTotalWordsInClass(instancesOfWordsPerClass);
 
+      //gets the log of the prior estimates (how often documents belong to each class based just on their count)
       double[] logPriors = getLogPriors(numInputsOfClass);
-      //gets the prior estimates
 
-      double[][] likelihoods = getLikelihoods(uniqueWordsPerClass, instancesOfWordsPerClass);
 
-      likelihoods = getEntropiesOfLikelihoods(likelihoods, logPriors, instancesOfWordsPerClass);
+      double[][] likelihoods = getLikelihoods(totalWordsPerClass, instancesOfWordsPerClass);
+
+      likelihoods = calculateEntropiesAndModifyLikelihoods(likelihoods, logPriors);
 
       classifyTestData(logPriors, likelihoods, maxDocuments);
 
@@ -97,8 +117,9 @@ public class NaiveBayes
 
   /**
    * Gets the total amount of times that words are found to belong to a newsgroup
-   * @param wordInstancesPerClass 
-   * @return
+   * @param wordInstancesPerClass (20x61188) array of word counts per class
+   * @return a summed array of the total number of words are found in a newsgroup
+   *      ex: if "athiesm" has 5 "no" and 2 "god", it would sum to 7 for the class "athiesm"
    */
   private int[] getTotalWordsInClass(int[][] wordInstancesPerClass){
     int[] returnArr = new int[20];
@@ -111,6 +132,11 @@ public class NaiveBayes
     return returnArr;
   }
 
+  /**
+   * Simple function to take log base 2 of the input (used for entropy)
+   * @param x input to take log2 of
+   * @return log base 2 of input x
+   */
   private static double log2(double x)
   {
     return Math.log(x) / Math.log(2);
@@ -120,21 +146,21 @@ public class NaiveBayes
    * Looks at the unique words per newsgroup, and the TOTAL word occurrences per newsgroup, and calculates the
    * conditional probabilities of a given word belonging to a specific newsgroup (calculates P(news | word) for all
    * newsgroups and words)
-   * @param uniqueWordsPerClass simple counter of how many unique words are found in each newsgroup
-   * @param wordOccurrencesInClass how many occurrences of every word are found per newsgroup
-   * @return
+   * @param wordsPerClass simple counter of how many words are found in each newsgroup
+   * @param wordOccurrencesInClass how many occurrences of each individual word are found per newsgroup
+   * @return (20x61188)ixj array of the likelihood that word j belongs to class/newsgroup i
    */
-  private double[][] getLikelihoods(int[] uniqueWordsPerClass, int[][] wordOccurrencesInClass)
+  private double[][] getLikelihoods(int[] wordsPerClass, int[][] wordOccurrencesInClass)
   {
     double[][] array = new double[20][UNIQUE_WORDS];
 
     for (int newsGroup = 0; newsGroup < 20; newsGroup++)
     {
-      int uniqueWords = uniqueWordsPerClass[newsGroup];
+      int totalClassWords = wordsPerClass[newsGroup];
       for (int word = 0; word < UNIQUE_WORDS; word++)
       {
         double likelihood = ((double) wordOccurrencesInClass[newsGroup][word] + (BETA - 1.0)) /
-            ((double) uniqueWords + ((double) UNIQUE_WORDS * (BETA - 1.0)));
+            ((double) totalClassWords + ((double) UNIQUE_WORDS * (BETA - 1.0)));
         //calculates P( X | Y )
 
         array[newsGroup][word] = likelihood;
@@ -152,45 +178,56 @@ public class NaiveBayes
     public String toString(){ return "Word " + i + " has entropy " + likeli; }
   }
 
-  private static final boolean printWeighted = true;
+  /**
+   * Used for printing the words found in the ranking method to answer questions 5-7
+   */
+  private static final boolean printRankingMethod = false;
 
-  private double[][] getEntropiesOfLikelihoods(double[][] likeliHoods, double[] logPriors, int[][] allOccurrences){
+  /**
+   * This function calculates the entropies for all words across the 20 newsgroups. It then considers if the entropy
+   * is too high to use for reliably classifying (a small filter to improve NB accuracy by ~0.3%), and then scales
+   * likelihoods for these words proportional to their classes' probability (Priori estimate)
+   * @param likeliHoods the likelihoods of classes based on words (P (Y | X))
+   * @param logPriors the prior knowledge for all 20 groups, in log form (P (Y))
+   * @return adjusted probabilities for entries with high entropy that should be adjusted based on priori knowledge
+   */
+  private double[][] calculateEntropiesAndModifyLikelihoods(double[][] likeliHoods, double[] logPriors){
     TreeSet<IntDoublePair> sortedTree = new TreeSet<>((o1, o2) -> Double.compare(o2.likeli, o1.likeli));
 
     for(int word = 0; word < UNIQUE_WORDS; word++){
       double wordEntropy = 0.0;
 
+      //get the entropy of the conditional probability of a word, across all newsgroups/classes
       for(int group = 0; group < 20; group++){
         wordEntropy += -likeliHoods[group][word] * log2(likeliHoods[group][word]);
       }
 
-
+      //Scale down the likelihood of choosing words that are found very frequently
+      //this improves the accuracy by ~0.3% for Kaggle test data
       if(wordEntropy > 0.5){
-        System.out.println("HIGH ENTROPY FOR " + (word+1));
+        //System.out.println("HIGH ENTROPY FOR " + (word+1));
         for(int group = 0; group < 20; group++){
           //System.out.println("previous: " + likeliHoods[group][word] + " prior: " + Math.exp(logPriors[group]));
           likeliHoods[group][word] += Math.exp(logPriors[group]);
         }
       }
-      if(wordEntropy > (1.0 / 20.0)) //only pick those that are above 1 instance per 20 documents
+      if(wordEntropy > (1.0 / 20.0)) //only pick those that are above  ~1 instance per 20 documents
       sortedTree.add(new IntDoublePair(word, 5.0 - wordEntropy)); //flip the scale (chose the low entropy words)
     }
-    if(printWeighted){
+
+    //Get the top 100 ranking words from the sorted set, and print them
+    if(printRankingMethod){
       int count = 0;
       for(IntDoublePair s : sortedTree){
         if(count == 100) break;
         else {
           count++;
-          int sum = 0;
-          for(int n = 0; n < 20; n++){
-            sum += allOccurrences[n][s.i];
-          }
           System.out.println(count + ": " + VOCABULARY_ARRAY[s.i]);
-
         }
       }
     }
-    return likeliHoods;
+    return likeliHoods; //returns the array with some modified entries, if their probabilities have changed as per
+                        // the entropy scaling
   }
 
   /**
@@ -236,8 +273,11 @@ public class NaiveBayes
   }
 
   /**
-   * @param logPriors
-   * @param likelihoods
+   * Classify all input test data based on the prior knowledge, likelihood array, and what line the testing data starts
+   * on (if the training data is being cross-validated)
+   * @param logPriors log values of priori knowledge for all 20 classes
+   * @param likelihoods 20x61188 array of P( Y | X ) estimates to be used for classification
+   * @param startingLine the line of the input file that we should start at, for testing (after training lines previous)
    * @throws FileNotFoundException
    * @throws UnsupportedEncodingException
    */
@@ -326,6 +366,11 @@ public class NaiveBayes
     }
   }
 
+  /**
+   * Open the vocabulary file, and load the  words found into a string array
+   * @param filePath relative path to the vocabulary text file
+   * @return array of all strings found in the vocabulary
+   */
   private static String[] getVocabArrFromFile(String filePath)
   {
     String[] vocab = new String[UNIQUE_WORDS];
@@ -352,8 +397,8 @@ public class NaiveBayes
 
   /**
    * Just look through the class probabilities and pick the maximum
-   * @param classProbs
-   * @return
+   * @param classProbs probability of classifying as a certain class
+   * @return index of the highest probability class
    */
   private int getBestClass(double[] classProbs){
     double max = Double.NEGATIVE_INFINITY;
