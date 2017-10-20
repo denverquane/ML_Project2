@@ -6,26 +6,34 @@ import java.util.*;
 
 public class NaiveBayes
 {
+  //Total number of columns in the training file
   private static final int COLS = 61190;
+
+  //Total number of unique words in the vocabulary
   private static final int UNIQUE_WORDS = COLS-2;
+
+
   private static final int ROWS = 12000;
   private static final boolean PRINT_MISCLASSIFY = true;
-  //private static double BETA = 0.0000001;
+
+  //This is the default value of Beta, which depends on the size of the alphabet
   private static double BETA = 1.0 + (1.0 / (double)(UNIQUE_WORDS));
 
-  private static final boolean CROSS_VALIDATE = true;
+
+  /**
+   * This determines if the program should be training the
+   */
+  private static boolean CROSS_VALIDATE = false;
 
   public static void main(String[] args){
     NaiveBayes csv = new NaiveBayes();
-
-    if(CROSS_VALIDATE){
-      csv.trainAndClassify(75);
-//      csv.trainAndClassify(25);
-//      csv.trainAndClassify(50);
-//      csv.trainAndClassify(75);
-//      csv.trainAndClassify(100);
+    if(args.length > 1 && args[0].equals("-cross")){
+      CROSS_VALIDATE = true;
+      System.out.println("Cross-validating with " + Integer.parseInt(args[1]));
+      csv.trainAndClassify(Integer.parseInt(args[1]));
     }
     else csv.trainAndClassify(100);
+
   }
 
   private void trainAndClassify(int percentToTrain){
@@ -35,13 +43,6 @@ public class NaiveBayes
     int totalDocs = 0;
     int[] numInputsOfClass = new int[20];
     int[][] instancesOfWordsPerClass = new int[20][UNIQUE_WORDS];
-    //int[] totalNumberOfWordInstance = new int[UNIQUE_WORDS];
-    //int[] uniqueDocsWordIsFoundIn = new int[UNIQUE_WORDS];
-    /**
-     * THESE INDICES ARE BACKWARDS, DO NOT CONFUSE THIS! Backwards indices should make traversing the complete records
-     * for one single word across all inputs faster (b/c of row incrementing as opposed to column incrementing)
-     */
-    //int[][] completeWordFreqRecord = new int[UNIQUE_WORDS][12000];
 
     try
     {
@@ -56,7 +57,7 @@ public class NaiveBayes
         for(int i = 1; i < COLS-1; i++){
           int elem =  Integer.parseInt(ls[i]);
           if(elem > 0) {
-            instancesOfWordsPerClass[clas][i-1]++;
+            instancesOfWordsPerClass[clas][i-1] += elem;
             //uniqueDocsWordIsFoundIn[i-1]++;
           }
 
@@ -70,7 +71,7 @@ public class NaiveBayes
 
       System.out.println("Trained with a total of " + totalDocs + " documents");
 
-      int[] uniqueWordsPerClass = getUniqueWordsInClass(instancesOfWordsPerClass);
+      int[] uniqueWordsPerClass = getTotalWordsInClass(instancesOfWordsPerClass);
 
       double[] logPriors = getLogPriors(numInputsOfClass);
       //gets the prior estimates
@@ -88,16 +89,16 @@ public class NaiveBayes
   }
 
   /**
-   * Gets the number of unique words found in each newsgroup
+   * Gets the total amount of times that words are found to belong to a newsgroup
    * @param wordInstancesPerClass 
    * @return
    */
-  private int[] getUniqueWordsInClass(int[][] wordInstancesPerClass){
+  private int[] getTotalWordsInClass(int[][] wordInstancesPerClass){
     int[] returnArr = new int[20];
 
     for(int news = 0; news < 20; news++){
       for(int word = 0; word < UNIQUE_WORDS; word++){
-        if(wordInstancesPerClass[news][word] > 0) returnArr[news]++;
+        if(wordInstancesPerClass[news][word] > 1) returnArr[news] += wordInstancesPerClass[news][word];
       }
     }
     return returnArr;
@@ -185,7 +186,20 @@ public class NaiveBayes
     return likeliHoods;
   }
 
-  private double[] getLikelihoodRowLogSums(double[] logPriors, double[][] likelihoods, int[] inputWords){
+  /**
+   * This function adds all the likelihoods in a row to obtain the MAP estimate for a document. This is the fundamental
+   * operation for Naive Bayes; by adding all these probabilities, and our Prior knowledge estimate, we obtain a rough
+   * idea of the likelihood of our input being classified in a certain newsgroup, based on the frequency of words in the
+   * input itself
+   * @param logPriors Log values of our prior knowledge, per document class (array is 20 long, 1 per newsgroup)
+   * @param likelihoods (20x61188) array of the likelihoods of all words belonging to a specific class, as calculated in
+   *                    "getLikelihoods"
+   * @param inputWords Sequence of 61188 integers representing the frequency of the vocab. words appearing in the
+   *                   document that we wish to classify
+   * @return 20-long array representing the probabilities that the input belongs to a newsgroup. We should then pick the
+   *          highest probability to determine which class the input likely belongs to
+   */
+  private double[] sumAllRowLikelihoodsApplyMAP(double[] logPriors, double[][] likelihoods, int[] inputWords){
     double[] returnArr = new double[20];
     for(int group = 0; group < 20; group++) {
       returnArr[group] += logPriors[group]; // P(newsgroup) (This is the MLE)
@@ -199,16 +213,17 @@ public class NaiveBayes
   }
 
   /**
-   * Prior knowledge looks at all the data, and gets the probability of a document being in a class just on random chance
-   * (in essence: # of documents in class X / # of documents total)
-   * @param counts
-   * @return
+   * Prior knowledge looks at all the data, and gets the probability of a document being in a class just on random
+   * chance (in essence: # of documents in class X / # of documents total)
+   * @param counts An array comprised of the total number of documents that are classified for a specific class
+   *               (so if 10 documents are in the 1st class (Athiesm), then counts[0] would be 10
+   * @return Calculated prior knowledge, which is a basic probabilstic estimate of how often documents are classified to
+   *          a specific newsgroup
    */
   private double[] getLogPriors(int[] counts){
     double[] priors = new double[20];
     for(int i = 0; i < 20; i++){
       priors[i] = Math.log(counts[i]) - Math.log(ROWS);
-      //System.out.println("I: " + i + ": " + priors[i]);
     }
     return priors;
   }
@@ -223,8 +238,8 @@ public class NaiveBayes
       throws FileNotFoundException, UnsupportedEncodingException
   {
     Scanner sc2;
-    PrintWriter writer;
-    int[][] confusionMatrix;
+    PrintWriter writer = null;
+    int[][] confusionMatrix = null;
     int totalEvaluated = 0;
     int totalCorrect = 0;
     int count = 0;
@@ -258,7 +273,7 @@ public class NaiveBayes
         }
 
         //now use the input data to estimate the class
-        double[] classProbs = getLikelihoodRowLogSums(logPriors, likelihoods, input);
+        double[] classProbs = sumAllRowLikelihoodsApplyMAP(logPriors, likelihoods, input);
 
         int bestClass = getBestClass(classProbs);
         //System.out.println("ID: " + ls2[0] + "Class: " + clas);
