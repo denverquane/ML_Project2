@@ -4,6 +4,13 @@ import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.util.*;
 
+/**
+ * Denver Quane and Matthew McChesney
+ * Last Rev. 10/19/2017
+ * CS529
+ *
+ * This class is the implementation of the Naive Bayes document classifier for CS529 Machine Learning
+ */
 public class NaiveBayes
 {
   //Total number of columns in the training file
@@ -102,11 +109,14 @@ public class NaiveBayes
       //gets the log of the prior estimates (how often documents belong to each class based just on their count)
       double[] logPriors = getLogPriors(numInputsOfClass);
 
-
+      //get the likelihoods of words and classes (MLE or P( X | Y ) for all X)
       double[][] likelihoods = getLikelihoods(totalWordsPerClass, instancesOfWordsPerClass);
 
+      //modify the likelihoods, if needed, to accomodate probs. with high entropy
       likelihoods = calculateEntropiesAndModifyLikelihoods(likelihoods, logPriors);
 
+      //classify all the testing data, starting on the line that we ended with for the training data (or line 0, if
+      //training and testing with all 12000 documents
       classifyTestData(logPriors, likelihoods, maxDocuments);
 
     } catch (FileNotFoundException | UnsupportedEncodingException e)
@@ -152,6 +162,7 @@ public class NaiveBayes
    */
   private double[][] getLikelihoods(int[] wordsPerClass, int[][] wordOccurrencesInClass)
   {
+    //20x61188 array of likelihoods (MLE)
     double[][] array = new double[20][UNIQUE_WORDS];
 
     for (int newsGroup = 0; newsGroup < 20; newsGroup++)
@@ -311,6 +322,8 @@ public class NaiveBayes
     while(sc2.hasNext()){
       String s2 = sc2.next();
       count++;
+
+      //choose data records that havent already been used for training (unless training w/ 100%, then start at 0)
       if(count > startingLine || startingLine == 12000 || !CROSS_VALIDATE)
       {
         totalEvaluated++;
@@ -327,10 +340,13 @@ public class NaiveBayes
         //now use the input data to estimate the class
         double[] classProbs = sumAllRowLikelihoodsApplyMAP(logPriors, likelihoods, input);
 
+        //chose the best probability amongst the classes
         int bestClass = getBestClass(classProbs);
         //System.out.println("ID: " + ls2[0] + "Class: " + clas);
+
+        //record output data, or confusion matrix info
         if (!CROSS_VALIDATE) writer.println(ls2[0] + "," + bestClass);
-        else
+        else //
         {
           actualClass = Integer.parseInt(ls2[COLS - 1]);
           if (actualClass > 0 && bestClass > 0) confusionMatrix[bestClass - 1][actualClass - 1]++;
@@ -346,10 +362,12 @@ public class NaiveBayes
       }
     }
     if(!CROSS_VALIDATE) {
-      writer.close();
+      writer.close(); //close the output csv file
       System.out.println("Completed with Beta = " + BETA);
     }
     else{
+
+      //Print confusion matrix information
       if(PRINT_MISCLASSIFY)
       {
         for (int i = 0; i < 20; i++)
@@ -367,7 +385,7 @@ public class NaiveBayes
         }
       }
       System.out.println("\nPredicted " + totalCorrect + "/" + totalEvaluated + " Correctly (" +
-          100.0*((double)totalCorrect/(double)totalEvaluated) + "%) with Beta = " + (BETA - 1.0));
+          100.0*((double)totalCorrect/(double)totalEvaluated) + "%) with Beta = 1 + " + (BETA - 1.0));
     }
   }
 
@@ -380,7 +398,7 @@ public class NaiveBayes
   {
     String[] vocab = new String[UNIQUE_WORDS];
 
-    Scanner sc = null;
+    Scanner sc;
     try
     {
       sc = new Scanner(new File(filePath));
