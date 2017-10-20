@@ -169,6 +169,10 @@ public class NaiveBayes
     return array;
   }
 
+  /**
+   * Simple class to pair an integer (word index) with a double (likelihood/probability)
+   * so that we can sort these pairs later for printing (questions 5-7)
+   */
   class IntDoublePair {
     final int i;
     final double likeli;
@@ -192,6 +196,7 @@ public class NaiveBayes
    * @return adjusted probabilities for entries with high entropy that should be adjusted based on priori knowledge
    */
   private double[][] calculateEntropiesAndModifyLikelihoods(double[][] likeliHoods, double[] logPriors){
+    //sort the tree elements (word/likelihood pairs) by the likelihoods
     TreeSet<IntDoublePair> sortedTree = new TreeSet<>((o1, o2) -> Double.compare(o2.likeli, o1.likeli));
 
     for(int word = 0; word < UNIQUE_WORDS; word++){
